@@ -187,16 +187,14 @@
         </div>
     </div>
 
-    <!-- ══════════════ Multi-Agent System Analysis (4 Tabs) ══════════════ -->
+    <!-- ══════════════ Multi-Agent System Analysis (2 Tabs) ══════════════ -->
     <div class="card p-4 mb-4">
         <h4 class="mb-1"><i class="bi bi-diagram-3 me-2 text-primary"></i>Multi-Agent System Analysis</h4>
         <small class="text-muted">10 GNN-DQN agents · MAFS feature selection · self-supervised adaptation</small>
 
         <ul class="nav nav-tabs mt-3" role="tablist">
-            <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-mafs" type="button">1&nbsp;·&nbsp;MAFS Panel</button></li>
-            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-mutation" type="button">2&nbsp;·&nbsp;Mutation Lab</button></li>
-            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-diversity" type="button">3&nbsp;·&nbsp;Diversity Heatmap</button></li>
-            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-adapt" type="button">4&nbsp;·&nbsp;Adaptive Learning</button></li>
+            <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-mafs"  type="button">1&nbsp;·&nbsp;MAFS Panel</button></li>
+            <li class="nav-item"><button class="nav-link"        data-bs-toggle="tab" data-bs-target="#tab-adapt" type="button">2&nbsp;·&nbsp;Adaptive Learning</button></li>
         </ul>
 
         <div class="tab-content mt-4">
@@ -220,40 +218,7 @@
                 <div id="mafsRegex" class="mt-3"></div>
             </div>
 
-            <!-- TAB 2 : Adaptive Detection Mutation Lab -->
-            <div class="tab-pane fade" id="tab-mutation">
-                <p class="text-muted small mb-2">
-                    Each button submits a different evasion of the same conceptual attack. The MAFS ensemble
-                    should detect them all; a single rule-based detector typically misses several.
-                </p>
-                <div class="d-flex flex-wrap gap-2 mb-3">
-                    <button class="btn btn-sm btn-outline-secondary" onclick="runMutation('Benign','hello world how are you today')">Benign baseline</button>
-                    <button class="btn btn-sm btn-outline-danger"    onclick="runMutation('Script','<script>alert(1)</script>')">Original Script</button>
-                    <button class="btn btn-sm btn-outline-danger"    onclick="runMutation('Event handler','<img src=x onerror=alert(1)>')">Event handler</button>
-                    <button class="btn btn-sm btn-outline-danger"    onclick="runMutation('JS URL','<a href=&quot;javascript:alert(1)&quot;>click</a>')">JS URL</button>
-                    <button class="btn btn-sm btn-outline-danger"    onclick="runMutation('SVG','<svg onload=alert(1)>')">SVG</button>
-                    <button class="btn btn-sm btn-outline-danger"    onclick="runMutation('Encoded','%3Cscript%3Ealert(1)%3C/script%3E')">URL-encoded</button>
-                    <button class="btn btn-sm btn-outline-danger"    onclick="runMutation('Polyglot','jaVaScRipT:/*-/*`/*\\`/*\'/*&quot;/**/(/* */onerror=alert(1))//')">Polyglot</button>
-                    <button class="btn btn-sm btn-outline-danger"    onclick="runMutation('DOM-based','<input onfocus=eval(&quot;alert(1)&quot;) autofocus>')">DOM-based</button>
-                    <button class="btn btn-sm btn-outline-warning ms-auto" onclick="clearMutationLog()"><i class="bi bi-trash"></i> Clear</button>
-                </div>
-                <div id="mutationLog"></div>
-            </div>
-
-            <!-- TAB 3 : Diversity Heatmap -->
-            <div class="tab-pane fade" id="tab-diversity">
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <p class="text-muted small mb-0">
-                        Per-agent active-feature count across a fixed benchmark of 8 attack categories.
-                        Diverse rows ⇒ each agent specialises in different feature regions ⇒ ensemble robustness.
-                    </p>
-                    <button class="btn btn-sm btn-outline-primary" onclick="runDiversity()"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
-                </div>
-                <div id="diversityHeatmap" style="height:480px;"></div>
-                <div id="diversitySummary" class="mt-3 small text-muted"></div>
-            </div>
-
-            <!-- TAB 4 : Adaptive Learning Dashboard -->
+            <!-- TAB 2 : Adaptive Learning Dashboard -->
             <div class="tab-pane fade" id="tab-adapt">
                 <p class="text-muted small mb-3">
                     Self-supervised continual learning. Every prediction feeds the adapter: high-consensus events
@@ -584,107 +549,7 @@ function renderMafsResult(data) {
 }
 
 // ════════════════════════════════════════════════════════════════════
-// Tab 2 — Adaptive Detection / Mutation Lab
-// ════════════════════════════════════════════════════════════════════
-async function runMutation(label, payload) {
-    try {
-        const r = await fetch('/api/agents-verdict', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({text: payload})
-        });
-        const data = await r.json();
-        if (data.error) { alert(data.error); return; }
-        appendMutationRow(label, payload, data);
-        refreshAdapterState();
-    } catch(e) { console.error(e); }
-}
-
-function appendMutationRow(label, payload, data) {
-    const m = data.mafs;
-    const rb = data.regex_baseline;
-    const log = document.getElementById('mutationLog');
-    const ensembleBadge = m.is_xss
-        ? '<span class="badge bg-danger">MAFS: malicious</span>'
-        : '<span class="badge bg-success">MAFS: benign</span>';
-    const regexBadge = rb.is_xss
-        ? '<span class="badge bg-danger">Regex: flagged</span>'
-        : '<span class="badge bg-secondary">Regex: clean</span>';
-    const agreeIcon = (m.is_xss === rb.is_xss)
-        ? '<i class="bi bi-check-circle text-success" title="Both agree"></i>'
-        : '<i class="bi bi-exclamation-triangle text-warning" title="Disagreement — MAFS catches what regex misses"></i>';
-
-    const row = document.createElement('div');
-    row.className = 'mutation-row';
-    row.innerHTML = `
-        <div>
-          <strong>${esc(label)}</strong> ${agreeIcon}
-          <div class="payload" title="${esc(payload)}">${esc(payload)}</div>
-        </div>
-        <div class="d-flex align-items-center gap-2 flex-wrap">
-          ${ensembleBadge} ${regexBadge}
-          <span class="small text-muted">votes ${m.active_votes}/10 · score ${(m.score*100).toFixed(1)}%</span>
-        </div>`;
-    log.prepend(row);
-    while (log.children.length > 12) log.removeChild(log.lastChild);
-}
-
-function clearMutationLog() {
-    document.getElementById('mutationLog').innerHTML = '';
-}
-
-// ════════════════════════════════════════════════════════════════════
-// Tab 3 — Diversity Heatmap
-// ════════════════════════════════════════════════════════════════════
-async function runDiversity() {
-    try {
-        const r = await fetch('/api/diversity-benchmark');
-        const data = await r.json();
-        if (data.error) { alert(data.error); return; }
-        renderDiversity(data.benchmark);
-    } catch(e) { console.error(e); }
-}
-
-function renderDiversity(rows) {
-    if (!rows || !rows.length) return;
-    const labels = rows.map(r => r.label);
-    const z = rows.map(r => r.agent_active);
-    const agentLabels = Array.from({length:10}, (_,i) => 'A' + i);
-
-    const data = [{
-        z, x: agentLabels, y: labels,
-        type: 'heatmap',
-        colorscale: [
-            [0.0, '#ffffff'],
-            [0.3, '#ffe5b4'],
-            [0.6, '#f39c12'],
-            [1.0, '#c0392b']
-        ],
-        hovertemplate: '<b>%{y}</b><br>%{x}<br>active features: %{z}<extra></extra>',
-        showscale: true,
-        colorbar: { title: { text: 'active feats', font: { size: 11 } }, thickness: 12, len: 0.85 }
-    }];
-
-    const layout = {
-        margin: { l: 120, r: 30, t: 30, b: 40 },
-        xaxis: { title: 'Agent', tickfont: { size: 12 } },
-        yaxis: { autorange: 'reversed', tickfont: { size: 12 } },
-        font: { family: 'Segoe UI, system-ui, sans-serif', size: 12 },
-        plot_bgcolor: '#fff', paper_bgcolor: '#fff'
-    };
-
-    Plotly.newPlot('diversityHeatmap', data, layout, {displayModeBar: false, responsive: true});
-
-    // Brief textual summary
-    const xssDetected = rows.filter(r => r.is_xss).length;
-    const sum = document.getElementById('diversitySummary');
-    sum.innerHTML = `Detected ${xssDetected} / ${rows.length} variants as malicious.
-        Diversity across rows demonstrates that no single agent dominates — different attack patterns
-        activate different agents.`;
-}
-
-// ════════════════════════════════════════════════════════════════════
-// Tab 4 — Adaptive Learning Dashboard
+// Tab 2 — Adaptive Learning Dashboard
 // ════════════════════════════════════════════════════════════════════
 let _adapterTimer = null;
 
@@ -789,7 +654,6 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (_adapterTimer) {
                 clearInterval(_adapterTimer); _adapterTimer = null;
             }
-            if (target === '#tab-diversity') runDiversity();
         });
     });
     // Run an initial MAFS for Tab 1 default input on page load (after Plotly loads)
