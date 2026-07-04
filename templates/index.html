@@ -87,7 +87,7 @@
     <div class="icon"><i class="bi bi-shield-check"></i></div>
     <h2 class="mt-2">Cybersecurity framework for Detection and Prevention<br>of Cross-Site Scripting Attacks Using Hybrid Deep Learning Techniques</h2>
     <p class="mb-0 mt-3 opacity-90" style="font-size:0.95rem;">
-        <strong>By:</strong> Ali Nafea Yousif
+        <strong>by</strong> Ali Nafea Yousif
         &nbsp;&nbsp;|&nbsp;&nbsp;
         <strong>Supervised By:</strong> Prof. Dr. Ziyad Tariq Mustafa Al-Ta'i
     </p>
@@ -221,7 +221,7 @@
             <!-- TAB 2 : Adaptive Learning Dashboard -->
             <div class="tab-pane fade" id="tab-adapt">
                 <p class="text-muted small mb-3">
-                    Self-supervised continual learning. Every prediction feeds the adapter: high-consensus events
+                    Every prediction feeds the adapter: high-consensus events
                     become pseudo-labelled experiences; high-entropy events accumulate as drift; the system
                     issues a micro-update once the drift threshold is reached.
                 </p>
@@ -488,7 +488,7 @@ function renderMafsResult(data) {
       <div class="verdict-banner ${cls} d-flex align-items-center justify-content-between flex-wrap gap-2">
         <div><i class="bi ${icon} me-2"></i>${txt}
           &nbsp;·&nbsp; classifier score <strong>${(m.score*100).toFixed(1)}%</strong>
-          &nbsp;·&nbsp; ensemble votes <strong>${m.active_votes}/10</strong>
+          &nbsp;·&nbsp; Agents agreement <strong>${m.active_votes}/10</strong>
           &nbsp;·&nbsp; selected features <strong>${m.selected_total}/${m.features_total}</strong>
         </div>
       </div>`;
@@ -530,7 +530,7 @@ function renderMafsResult(data) {
             (matches: ${rb.matches.length})
           </div>
           <div class="col-md-4">
-            <i class="bi bi-diagram-3"></i> <strong>MAFS ensemble:</strong>
+            <i class="bi bi-diagram-3"></i> <strong>Decision:</strong>
             ${m.is_xss ? '<span class="badge bg-danger">malicious</span>' : '<span class="badge bg-success">benign</span>'}
           </div>
           <div class="col-md-4">

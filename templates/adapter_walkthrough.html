@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Self-Supervised Online Adapter — Worked Example</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    :root {
+      --primary:#1a5276; --accent:#2e86c1; --safe:#28a745; --danger:#dc3545; --warn:#f39c12;
+    }
+    body { background:#f4f6f9; font-family:'Segoe UI', system-ui, sans-serif; color:#222; }
+    .hero { background:linear-gradient(135deg,var(--primary),var(--accent)); color:white;
+            padding:2.5rem 1rem; text-align:center; }
+    .hero h1 { font-size:1.7rem; font-weight:700; margin:0; }
+    .hero .sub { opacity:.85; font-size:.95rem; margin-top:.5rem; }
+    .card { border:none; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,.06); margin-bottom:1.5rem; }
+    .step-badge { display:inline-block; background:var(--accent); color:white; padding:.25rem .8rem;
+                  border-radius:20px; font-size:.78rem; font-weight:700; letter-spacing:1px; }
+    .event-card { border-left:5px solid #ccc; }
+    .event-benign { border-left-color:var(--safe); background:linear-gradient(to right,#eaf7ee,#fff); }
+    .event-xss    { border-left-color:var(--danger); background:linear-gradient(to right,#fceaea,#fff); }
+    .event-uncertain { border-left-color:var(--warn); background:linear-gradient(to right,#fff8e5,#fff); }
+    .event-micro  { border-left-color:#8e44ad; background:linear-gradient(to right,#f3e6f9,#fff); }
+    .vote-cell { display:inline-block; width:24px; height:24px; border-radius:50%;
+                 line-height:24px; font-size:12px; font-weight:700; margin:1px; text-align:center; color:white; }
+    .vote-yes { background:var(--danger); }
+    .vote-no  { background:#95a5a6; }
+    .metric   { display:flex; align-items:center; gap:8px; margin:4px 0; font-size:.92rem; }
+    .metric .lbl { min-width:140px; color:#666; font-size:.82rem; }
+    .metric .val { font-family:Consolas,monospace; font-weight:700; color:var(--primary); }
+    .state-table th, .state-table td { text-align:center; vertical-align:middle; padding:6px 4px; font-size:.82rem; }
+    .state-table th { background:var(--primary); color:white; font-weight:600; }
+    .fx-arrow { color:#666; font-size:1.8rem; text-align:center; margin:.5rem 0; }
+    .highlight { background:#fff3cd; padding:2px 6px; border-radius:4px; font-weight:700; }
+    .danger-highlight { background:#f8d7da; color:#721c24; padding:2px 6px; border-radius:4px; font-weight:700; }
+    .success-highlight { background:#d4edda; color:#155724; padding:2px 6px; border-radius:4px; font-weight:700; }
+    .code { font-family:Consolas,monospace; background:#f0f2f5; padding:1px 6px; border-radius:3px; color:#c0392b; }
+    .agent-tag { display:inline-block; padding:2px 8px; background:var(--primary); color:white;
+                 border-radius:4px; font-size:.75rem; font-weight:700; margin:1px; }
+    .agent-tag.updated { background:#8e44ad; box-shadow:0 0 8px rgba(142,68,173,.4); }
+    footer { background:#2c3e50; color:#bdc3c7; text-align:center; padding:1.2rem; font-size:.82rem; margin-top:2rem; }
+    footer strong { color:white; }
+    .conclusion-box { background:linear-gradient(135deg,#e8f5e9,#c8e6c9); border-radius:12px;
+                      padding:1.5rem; border-left:5px solid var(--safe); }
+  </style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>🎬 Self-Supervised Online Adapter — Worked Example</h1>
+  <p class="sub">A step-by-step walkthrough of Algorithm 1 across 7 consecutive requests</p>
+</div>
+
+<div class="container my-4">
+
+  <!-- Initial State -->
+  <div class="card p-4">
+    <span class="step-badge">🏁 Initial State</span>
+    <h4 class="mt-3">Before any request arrives</h4>
+    <div class="row mt-3">
+      <div class="col-md-6">
+        <div class="metric"><span class="lbl">Drift counter (c):</span><span class="val">0</span></div>
+        <div class="metric"><span class="lbl">Replay buffer (B):</span><span class="val">empty</span></div>
+        <div class="metric"><span class="lbl">Micro-updates (M):</span><span class="val">0</span></div>
+      </div>
+      <div class="col-md-6">
+        <div class="metric"><span class="lbl">Exploration ε (all agents):</span><span class="val">0.10</span></div>
+        <div class="metric"><span class="lbl">Disagreement d (all agents):</span><span class="val">0.0</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Event 1 : consensus_xss -->
+  <div class="card p-4 event-card event-xss">
+    <span class="step-badge" style="background:var(--danger)">📨 Event 1 — consensus_xss</span>
+    <h5 class="mt-3">Query: <code class="code">&lt;script&gt;alert(1)&lt;/script&gt;</code></h5>
+
+    <p class="text-muted small mb-2">Per-agent votes:</p>
+    <div>
+      <span class="vote-cell vote-yes">1</span>
+      <span class="vote-cell vote-yes">1</span>
+      <span class="vote-cell vote-yes">1</span>
+      <span class="vote-cell vote-yes">1</span>
+      <span class="vote-cell vote-yes">1</span>
+      <span class="vote-cell vote-no">0</span>
+      <span class="vote-cell vote-yes">1</span>
+      <span class="vote-cell vote-yes">1</span>
+      <span class="vote-cell vote-yes">1</span>
+      <span class="vote-cell vote-yes">1</span>
+      <small class="text-muted ms-3">9/10 agents flag as attack</small>
+    </div>
+
+    <div class="fx-arrow">↓</div>
+
+    <div class="row">
+      <div class="col-md-6">
+        <div class="metric"><span class="lbl">Vote ratio p:</span><span class="val">0.90</span></div>
+        <div class="metric"><span class="lbl">Entropy H(p):</span><span class="val">0.47</span></div>
+        <div class="metric"><span class="lbl">Classifier score s:</span><span class="val">0.95</span></div>
+      </div>
+      <div class="col-md-6">
+        <div class="metric"><span class="lbl">Condition matched:</span>
+          <span class="val">H &lt; 0.5 AND s &gt; 0.70</span></div>
+        <div class="metric"><span class="lbl">Category (φ):</span>
+          <span class="danger-highlight">consensus_xss</span></div>
+        <div class="metric"><span class="lbl">Pseudo-label (ℓ):</span>
+          <span class="danger-highlight">1</span></div>
+        <div class="metric"><span class="lbl">Confidence:</span><span class="val">0.95</span></div>
+      </div>
+    </div>
+
+    <p class="mt-3 mb-1"><strong>Effect on state:</strong></p>
+    <ul class="small mb-0">
+      <li>Buffer size grows to 1.</li>
+      <li>Agent 5 disagreed → its disagreement score d<sub>5</sub> increases to 1.0.</li>
+      <li>Drift counter unchanged (still 0).</li>
+    </ul>
+  </div>
+
+  <!-- Event 2 : consensus_benign -->
+  <div class="card p-4 event-card event-benign">
+    <span class="step-badge" style="background:var(--safe)">📨 Event 2 — consensus_benign</span>
+    <h5 class="mt-3">Query: <code class="code">Hello, how are you today?</code></h5>
+
+    <p class="text-muted small mb-2">Per-agent votes:</p>
+    <div>
+      <span class="vote-cell vote-no">0</span>
+      <span class="vote-cell vote-no">0</span>
+      <span class="vote-cell vote-no">0</span>
+      <span class="vote-cell vote-no">0</span>
+      <span class="vote-cell vote-no">0</span>
+      <span class="vote-cell vote-no">0</span>
+      <span class="vote-cell vote-no">0</span>
+      <span class="vote-cell vote-no">0</span>
+      <span class="vote-cell vote-no">0</span>
+      <span class="vote-cell vote-no">0</span>
+      <small class="text-muted ms-3">0/10 agents flag as attack</small>
+    </div>
+
+    <div class="fx-arrow">↓</div>
+
+    <div class="row">
+      <div class="col-md-6">
+        <div class="metric"><span class="lbl">Vote ratio p:</span><span class="val">0.00</span></div>
+        <div class="metric"><span class="lbl">Entropy H(p):</span><span class="val">0.00</span></div>
+        <div class="metric"><span class="lbl">Classifier score s:</span><span class="val">0.02</span></div>
+      </div>
+      <div class="col-md-6">
+        <div class="metric"><span class="lbl">Condition matched:</span>
+          <span class="val">H &lt; 0.5 AND s &lt; 0.30</span></div>
+        <div class="metric"><span class="lbl">Category (φ):</span>
+          <span class="success-highlight">consensus_benign</span></div>
+        <div class="metric"><span class="lbl">Pseudo-label (ℓ):</span>
+          <span class="success-highlight">0</span></div>
+        <div class="metric"><span class="lbl">Confidence:</span><span class="val">0.98</span></div>
+      </div>
+    </div>
+
+    <p class="mt-3 mb-1"><strong>Effect on state:</strong></p>
+    <ul class="small mb-0">
+      <li>Buffer size grows to 2.</li>
+      <li>All agents agreed → each d<sub>i</sub> decays by ×0.95.</li>
+      <li>Drift counter still 0.</li>
+    </ul>
+  </div>
+
+  <!-- Events 3-7 : uncertain (drift building up) -->
+  <div class="card p-4 event-card event-uncertain">
+    <span class="step-badge" style="background:var(--warn)">📨 Events 3–7 — uncertain (drift accumulates)</span>
+    <h5 class="mt-3">A novel obfuscated attack pattern the agents haven't fully learned yet</h5>
+
+    <p>Example query: <code class="code">&lt;img src="javascript:alert(1)"&gt;</code></p>
+
+    <p class="text-muted small mb-2">Per-agent votes on Event 3 (split decision):</p>
+    <div>
+      <span class="vote-cell vote-yes">1</span>
+      <span class="vote-cell vote-no">0</span>
+      <span class="vote-cell vote-yes">1</span>
+      <span class="vote-cell vote-yes">1</span>
+      <span class="vote-cell vote-no">0</span>
+      <span class="vote-cell vote-yes">1</span>
+      <span class="vote-cell vote-no">0</span>
+      <span class="vote-cell vote-yes">1</span>
+      <span class="vote-cell vote-no">0</span>
+      <span class="vote-cell vote-yes">1</span>
+      <small class="text-muted ms-3">6/10 (agents are split)</small>
+    </div>
+
+    <p class="mt-3">All 5 events look similar — a high-entropy pattern:</p>
+
+    <table class="table state-table table-bordered">
+      <thead>
+        <tr><th>Event</th><th>Votes (out of 10)</th><th>Score s</th><th>Entropy H</th><th>Category</th><th>Drift c after</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>3</td><td>6/10</td><td>0.55</td><td>0.97</td><td class="text-warning">uncertain</td><td><strong>1</strong></td></tr>
+        <tr><td>4</td><td>5/10</td><td>0.48</td><td>1.00</td><td class="text-warning">uncertain</td><td><strong>2</strong></td></tr>
+        <tr><td>5</td><td>4/10</td><td>0.52</td><td>0.97</td><td class="text-warning">uncertain</td><td><strong>3</strong></td></tr>
+        <tr><td>6</td><td>6/10</td><td>0.50</td><td>0.97</td><td class="text-warning">uncertain</td><td><strong>4</strong></td></tr>
+        <tr><td>7</td><td>5/10</td><td>0.53</td><td>1.00</td><td class="text-warning">uncertain</td>
+            <td><span class="danger-highlight">5 — THRESHOLD REACHED</span></td></tr>
+      </tbody>
+    </table>
+
+    <p class="mt-3 mb-1"><strong>Accumulated per-agent disagreement scores:</strong></p>
+    <table class="table state-table table-bordered">
+      <thead><tr>
+        <th>Agent</th><th>A0</th><th>A1</th><th>A2</th><th>A3</th><th>A4</th>
+        <th>A5</th><th>A6</th><th>A7</th><th>A8</th><th>A9</th>
+      </tr></thead>
+      <tbody><tr><td>d<sub>i</sub></td>
+        <td>1.2</td><td>3.5</td><td>0.8</td><td>1.1</td><td>2.9</td>
+        <td>0.5</td><td style="background:#fff3cd"><strong>4.2</strong></td>
+        <td>0.9</td><td style="background:#fff3cd"><strong>3.8</strong></td><td>1.0</td>
+      </tr></tbody>
+    </table>
+    <p class="small text-muted">Agents 6, 8, 1 stand out as the persistent disagreeers.</p>
+  </div>
+
+  <!-- Micro-Update Fires -->
+  <div class="card p-4 event-card event-micro">
+    <span class="step-badge" style="background:#8e44ad">🚨 Micro-Update Triggered</span>
+    <h5 class="mt-3">Drift threshold reached — Algorithm 2 fires</h5>
+
+    <div class="row mt-3">
+      <div class="col-md-6">
+        <p class="mb-2"><strong>Step 5.1 — Rank agents by disagreement:</strong></p>
+        <p class="mb-3">
+          <span class="agent-tag updated">A6 · 4.2</span>
+          <span class="agent-tag updated">A8 · 3.8</span>
+          <span class="agent-tag updated">A1 · 3.5</span>
+          <span class="agent-tag">A4 · 2.9</span>
+          <span class="agent-tag">A0 · 1.2</span>
+          <span class="agent-tag" style="opacity:.6">… (others lower)</span>
+        </p>
+        <p class="mb-2"><strong>Step 5.2 — Select the top 3:</strong></p>
+        <p><span class="highlight">T = {A6, A8, A1}</span></p>
+      </div>
+      <div class="col-md-6">
+        <p class="mb-2"><strong>Step 5.3 — Decay exploration + partial reset:</strong></p>
+        <table class="table state-table table-bordered">
+          <thead><tr>
+            <th>Agent</th><th>ε before</th><th>ε after</th><th>d before</th><th>d after</th>
+          </tr></thead>
+          <tbody>
+            <tr><td><span class="agent-tag updated">A6</span></td>
+                <td>0.100</td><td class="text-success"><strong>0.085</strong></td>
+                <td>4.2</td><td>2.1</td></tr>
+            <tr><td><span class="agent-tag updated">A8</span></td>
+                <td>0.100</td><td class="text-success"><strong>0.085</strong></td>
+                <td>3.8</td><td>1.9</td></tr>
+            <tr><td><span class="agent-tag updated">A1</span></td>
+                <td>0.100</td><td class="text-success"><strong>0.085</strong></td>
+                <td>3.5</td><td>1.75</td></tr>
+          </tbody>
+        </table>
+        <p class="small text-muted mb-0">Applied rule: ε ← max(0.01, 0.85 × ε) &nbsp;·&nbsp; d ← 0.5 × d</p>
+      </div>
+    </div>
+
+    <div class="mt-3 p-3" style="background:white; border-radius:8px; border:1px solid #d0c0e0">
+      <p class="mb-2"><strong>Step 5.4 — Emit micro-update event:</strong></p>
+<pre class="small mb-0" style="background:#faf5ff;padding:12px;border-radius:6px">
+u = {
+  timestamp:            14:32:07
+  agents_updated:       [6, 8, 1]
+  new_epsilons:         [0.085, 0.085, 0.085]
+  drift_count_at_event: 5
+  buffer_size_at_event: 7
+}
+</pre>
+    </div>
+
+    <p class="mt-3 mb-0"><strong>Drift counter reset:</strong> c ← 0</p>
+  </div>
+
+  <!-- Final State -->
+  <div class="card p-4">
+    <span class="step-badge">📊 Final State After 7 Events</span>
+    <div class="row mt-3">
+      <div class="col-md-6">
+        <div class="metric"><span class="lbl">Buffer B:</span><span class="val">7 records</span></div>
+        <div class="metric"><span class="lbl">Drift counter c:</span><span class="val">0 (reset)</span></div>
+        <div class="metric"><span class="lbl">Micro-updates issued:</span><span class="val">1</span></div>
+      </div>
+      <div class="col-md-6">
+        <div class="metric"><span class="lbl">Pseudo-labelled events:</span><span class="val">2</span></div>
+        <div class="metric"><span class="lbl">Uncertain events:</span><span class="val">5</span></div>
+        <div class="metric"><span class="lbl">Total observed:</span><span class="val">7</span></div>
+      </div>
+    </div>
+
+    <p class="mt-3 mb-2"><strong>Updated exploration rates per agent:</strong></p>
+    <table class="table state-table table-bordered">
+      <thead><tr>
+        <th>Agent</th><th>A0</th><th>A1</th><th>A2</th><th>A3</th><th>A4</th>
+        <th>A5</th><th>A6</th><th>A7</th><th>A8</th><th>A9</th>
+      </tr></thead>
+      <tbody><tr>
+        <td>ε<sub>i</sub></td>
+        <td>0.100</td>
+        <td class="table-warning"><strong>0.085</strong></td>
+        <td>0.100</td><td>0.100</td><td>0.100</td><td>0.100</td>
+        <td class="table-warning"><strong>0.085</strong></td>
+        <td>0.100</td>
+        <td class="table-warning"><strong>0.085</strong></td>
+        <td>0.100</td>
+      </tr></tbody>
+    </table>
+  </div>
+
+</div>
+
+<footer>
+  <div><strong>Cybersecurity Framework for Detection and Prevention of Cross-Site Scripting Attacks
+       Using Hybrid Deep Learning Techniques</strong></div>
+  <div class="mt-2">
+    Student: <strong>Ali Nafea Yousif</strong> &nbsp;|&nbsp;
+    Supervised By: <strong>Prof. Dr. Ziyad Tariq Mustafa Al-Ta'i</strong>
+  </div>
+</footer>
+
+</body>
+</html>

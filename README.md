@@ -1,10 +1,10 @@
 # Cybersecurity Framework for Detection and Prevention of Cross-Site Scripting Attacks Using Hybrid Deep Learning Techniques
 
-> **Ph.D. Dissertation Demonstration**
+> **MSc. Thesis Demonstration**
 > **Student:** Ali Nafea Yousif
 > **Supervised By:** Prof. Dr. Ziyad Tariq Mustafa Al-Ta'i
 
-A live, browser-based demonstration of a hybrid XSS detection and prevention firewall that combines pattern-based heuristics, a trained machine-learning classifier, and a **10-agent GNN-DQN Multi-Agent Feature Selection (MAFS)**  wrapped in a self-supervised continual-learning loop.
+A live, browser-based demonstration of a hybrid XSS detection and prevention firewall that combines pattern-based heuristics, a trained machine-learning classifier, and a **10-agent GNN-DQN Multi-Agent Feature Selection (MAFS)** ensemble — wrapped in a self-supervised continual-learning loop.
 
 **Live demo:** https://xssfirewall.pythonanywhere.com
 
@@ -199,6 +199,8 @@ Reload.
 ---
 
 ## 10. Acknowledgements
+
+This demonstration accompanies the M.Sc. thesis
 
 > *Cybersecurity framework for Detection and Prevention of Cross-Site Scripting Attacks Using Hybrid Deep Learning Techniques*
 
